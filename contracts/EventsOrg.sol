@@ -26,4 +26,17 @@ contract EventsOrg {
         events[nextId] = Event(msg.sender, _eventName, _date, _ticketPrice, _ticketCount, _ticketCount); 
         nextId++;
     }
+
+        function buyTicket(uint id, uint quantity) external payable {
+        require(events[id].date != 0, 'Event Does Not Exist');
+        require(events[id].date > block.timestamp, 'Event has Ended');
+
+        Event storage _event = events[id];
+
+        require(msg.value == (_event.ticketPrice * quantity), 'Not Enough fund');
+        require(_event.ticketRemaining >= quantity, 'Not Enough Tickets Left');
+
+        _event.ticketRemaining -= quantity;
+        tickets[msg.sender][id] += quantity;
+    }
 }
