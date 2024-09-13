@@ -1,127 +1,74 @@
 import {
-  time,
   loadFixture,
 } from "@nomicfoundation/hardhat-toolbox/network-helpers";
 import { anyValue } from "@nomicfoundation/hardhat-chai-matchers/withArgs";
 import { expect } from "chai";
 import hre from "hardhat";
 
-describe("Lock", function () {
-  // We define a fixture to reuse the same setup in every test.
-  // We use loadFixture to run this setup once, snapshot that state,
-  // and reset Hardhat Network to that snapshot in every test.
-  async function deployOneYearLockFixture() {
-    const ONE_YEAR_IN_SECS = 365 * 24 * 60 * 60;
-    const ONE_GWEI = 1_000_000_000;
+describe("EventsOrg", function () {
+  
+  async function deployEventsOrg() {
 
-    const lockedAmount = ONE_GWEI;
-    const unlockTime = (await time.latest()) + ONE_YEAR_IN_SECS;
+    const [owner, otherAccount, otherAccount1] = await hre.ethers.getSigners();
 
-    // Contracts are deployed using the first signer/account by default
-    const [owner, otherAccount] = await hre.ethers.getSigners();
+    const Events = await hre.ethers.getContractFactory("EventsOrg");
+    const eventsAddr = await Events.deploy();
 
-    const Lock = await hre.ethers.getContractFactory("Lock");
-    const lock = await Lock.deploy(unlockTime, { value: lockedAmount });
-
-    return { lock, unlockTime, lockedAmount, owner, otherAccount };
+    return { eventsAddr, owner, otherAccount, otherAccount1};
   }
 
   describe("Deployment", function () {
-    it("Should set the right unlockTime", async function () {
-      const { lock, unlockTime } = await loadFixture(deployOneYearLockFixture);
+    it("Should set the nextid to zero upon deployment", async function () {
+      const {eventsAddr } = await loadFixture(deployEventsOrg);
 
-      expect(await lock.unlockTime()).to.equal(unlockTime);
-    });
-
-    it("Should set the right owner", async function () {
-      const { lock, owner } = await loadFixture(deployOneYearLockFixture);
-
-      expect(await lock.owner()).to.equal(owner.address);
-    });
-
-    it("Should receive and store the funds to lock", async function () {
-      const { lock, lockedAmount } = await loadFixture(
-        deployOneYearLockFixture
-      );
-
-      expect(await hre.ethers.provider.getBalance(lock.target)).to.equal(
-        lockedAmount
-      );
-    });
-
-    it("Should fail if the unlockTime is not in the future", async function () {
-      // We don't use the fixture here because we want a different deployment
-      const latestTime = await time.latest();
-      const Lock = await hre.ethers.getContractFactory("Lock");
-      await expect(Lock.deploy(latestTime, { value: 1 })).to.be.revertedWith(
-        "Unlock time should be in the future"
-      );
+      expect(await eventsAddr.nextId()).to.be.equal(0);
+      
     });
   });
 
-  describe("Withdrawals", function () {
-    describe("Validations", function () {
-      it("Should revert with the right error if called too soon", async function () {
-        const { lock } = await loadFixture(deployOneYearLockFixture);
+  describe("create Event", function(){
+    it("Should check that tickect count must be > 0", async function () {
+      const {eventsAddr, otherAccount} = await loadFixture(deployEventsOrg);
 
-        await expect(lock.withdraw()).to.be.revertedWith(
-          "You can't withdraw yet"
-        );
-      });
+      const _eventName = "GifftyBabe" ;
+      const _date = 1734084719;
+      const _ticketPrice = hre.ethers.parseUnits("1", 18)
+      const _ticketCount = 0;
 
-      it("Should revert with the right error if called from another account", async function () {
-        const { lock, unlockTime, otherAccount } = await loadFixture(
-          deployOneYearLockFixture
-        );
-
-        // We can increase the time in Hardhat Network
-        await time.increaseTo(unlockTime);
-
-        // We use lock.connect() to send a transaction from another account
-        await expect(lock.connect(otherAccount).withdraw()).to.be.revertedWith(
-          "You aren't the owner"
-        );
-      });
-
-      it("Shouldn't fail if the unlockTime has arrived and the owner calls it", async function () {
-        const { lock, unlockTime } = await loadFixture(
-          deployOneYearLockFixture
-        );
-
-        // Transactions are sent using the first signer by default
-        await time.increaseTo(unlockTime);
-
-        await expect(lock.withdraw()).not.to.be.reverted;
-      });
+      await expect (eventsAddr.createEvent(_eventName, _date, _ticketPrice, _ticketCount)).to.be.revertedWith("Ticket count must be greater than zero");
     });
 
-    describe("Events", function () {
-      it("Should emit an event on withdrawals", async function () {
-        const { lock, unlockTime, lockedAmount } = await loadFixture(
-          deployOneYearLockFixture
-        );
+    it("Should check that current date is < event date", async function () {
+      const {eventsAddr, otherAccount} = await loadFixture(deployEventsOrg);
 
-        await time.increaseTo(unlockTime);
+      const _eventName = "GifftyBabe" ;
+      const _date = 1724084719;
+      const _ticketPrice = hre.ethers.parseUnits("1", 18)
+      const _ticketCount = 300;
+      
+      // // Get the current block's timestamp
+      // const blockNumber = await hre.ethers.provider.getBlockNumber();
+      // const currentBlock = await hre.ethers.provider.getBlock(blockNumber);
+      // const currentTimestamp = currentBlock?.timestamp;
 
-        await expect(lock.withdraw())
-          .to.emit(lock, "Withdrawal")
-          .withArgs(lockedAmount, anyValue); // We accept any value as `when` arg
-      });
+      //console.log(currentTimestamp);
+
+      await expect (eventsAddr.createEvent(_eventName, _date, _ticketPrice, _ticketCount)).to.be.revertedWith("You cannot create an event for past date");
     });
 
-    describe("Transfers", function () {
-      it("Should transfer the funds to the owner", async function () {
-        const { lock, unlockTime, lockedAmount, owner } = await loadFixture(
-          deployOneYearLockFixture
-        );
+    it("Should check if nextId is increamented", async function () {
+      const {eventsAddr, otherAccount} = await loadFixture(deployEventsOrg);
 
-        await time.increaseTo(unlockTime);
+      const _eventName = "GifftyBabe" ;
+      const _date = 1734084719;
+      const _ticketPrice = hre.ethers.parseUnits("1", 18)
+      const _ticketCount = 300;
+      
+      await eventsAddr.createEvent(_eventName, _date, _ticketPrice, _ticketCount);
 
-        await expect(lock.withdraw()).to.changeEtherBalances(
-          [owner, lock],
-          [lockedAmount, -lockedAmount]
-        );
-      });
+      expect (await eventsAddr.nextId()).to.be.equal(1);
     });
   });
+
+  describe("Buy ticket", function())
 });
